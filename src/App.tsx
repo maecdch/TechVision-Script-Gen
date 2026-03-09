@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { generateScript, ScriptStep } from './services/gemini';
+import { generateScript, generateManimScript, ScriptStep } from './services/gemini';
 import { LatexRenderer } from './components/LatexRenderer';
-import { Sparkles, Video, Code, Loader2, Copy, Check } from 'lucide-react';
+import { Sparkles, Video, Code, Loader2, Copy, Check, Terminal, Play, FileCode2 } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export default function App() {
@@ -10,7 +10,12 @@ export default function App() {
   const [script, setScript] = useState<ScriptStep[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+  
+  // New state for full Manim script generation
+  const [fullManimScript, setFullManimScript] = useState<string | null>(null);
+  const [generatingManim, setGeneratingManim] = useState(false);
+  const [copiedFullManim, setCopiedFullManim] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,6 +24,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setScript(null);
+    setFullManimScript(null);
 
     try {
       const result = await generateScript(topic);
@@ -31,12 +37,41 @@ export default function App() {
     }
   };
 
-  const handleCopy = () => {
+  const handleCopyJson = () => {
     if (script) {
       navigator.clipboard.writeText(JSON.stringify(script, null, 2));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2000);
     }
+  };
+
+  const handleGenerateFullManim = async () => {
+    if (!script) return;
+    
+    setGeneratingManim(true);
+    setError(null);
+    
+    try {
+      const pythonCode = await generateManimScript(JSON.stringify(script, null, 2));
+      setFullManimScript(pythonCode);
+    } catch (err) {
+      setError('Failed to generate full Manim script.');
+      console.error(err);
+    } finally {
+      setGeneratingManim(false);
+    }
+  };
+
+  const handleCopyFullManim = () => {
+    if (fullManimScript) {
+      navigator.clipboard.writeText(fullManimScript);
+      setCopiedFullManim(true);
+      setTimeout(() => setCopiedFullManim(false), 2000);
+    }
+  };
+
+  const handleCopySingleManim = (code: string) => {
+    navigator.clipboard.writeText(code);
   };
 
   return (
@@ -69,11 +104,11 @@ export default function App() {
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="Enter a technical topic (e.g., Transformer Architecture, Fourier Transform)..."
                   className="w-full bg-transparent border-none py-4 pl-12 pr-32 text-lg focus:ring-0 text-white placeholder-gray-600"
-                  disabled={loading}
+                  disabled={loading || generatingManim}
                 />
                 <button
                   type="submit"
-                  disabled={loading || !topic.trim()}
+                  disabled={loading || generatingManim || !topic.trim()}
                   className="absolute right-2 px-6 py-2 bg-[var(--color-tech-accent)] text-black font-bold rounded-xl hover:bg-[#00cc7d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Generate'}
@@ -106,18 +141,58 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="space-y-6"
             >
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <h2 className="text-xl font-mono text-gray-400">
                   Script for: <span className="text-[var(--color-tech-secondary)]">{topic}</span>
                 </h2>
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-mono text-gray-400 hover:text-white border border-gray-800 rounded-lg hover:bg-gray-900 transition-colors"
-                >
-                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  {copied ? 'Copied JSON' : 'Copy JSON'}
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handleCopyJson}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-mono text-gray-400 hover:text-white border border-gray-800 rounded-lg hover:bg-gray-900 transition-colors"
+                  >
+                    {copiedJson ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    {copiedJson ? 'Copied JSON' : 'Copy JSON'}
+                  </button>
+                  <button
+                    onClick={handleGenerateFullManim}
+                    disabled={generatingManim}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-mono text-black bg-[var(--color-tech-accent)] hover:bg-[#00cc7d] rounded-lg transition-colors font-bold shadow-[0_0_10px_rgba(0,255,157,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generatingManim ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                    {generatingManim ? 'Generating Matrix...' : 'Generate Matrix Animation'}
+                  </button>
+                </div>
               </div>
+
+              {/* Full Manim Script Output */}
+              <AnimatePresence>
+                {fullManimScript && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="mb-12"
+                  >
+                    <div className="glass-panel rounded-2xl p-6 border border-[var(--color-tech-accent)]/50 shadow-[0_0_20px_rgba(0,255,157,0.15)]">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-[var(--color-tech-accent)] font-mono font-bold">
+                          <FileCode2 className="w-5 h-5" />
+                          Matrix Generator Output (Python)
+                        </div>
+                        <button
+                          onClick={handleCopyFullManim}
+                          className="flex items-center gap-2 px-4 py-2 text-sm font-mono text-black bg-[var(--color-tech-accent)] hover:bg-[#00cc7d] rounded-lg transition-colors font-bold"
+                        >
+                          {copiedFullManim ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          {copiedFullManim ? 'Copied!' : 'Copy Python Code'}
+                        </button>
+                      </div>
+                      <pre className="bg-black/80 p-4 rounded-xl overflow-x-auto text-sm font-mono text-gray-300 border border-gray-800 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--color-tech-accent)] scrollbar-track-transparent">
+                        <code>{fullManimScript}</code>
+                      </pre>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div className="relative border-l-2 border-gray-800 ml-4 md:ml-6 space-y-12 pb-12">
                 {script.map((step, index) => (
@@ -173,6 +248,25 @@ export default function App() {
                             <p className="text-sm text-gray-300">
                               {step.visual_element}
                             </p>
+                          </div>
+
+                          {/* Manim Code Snippet */}
+                          <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-800 group-hover:border-[var(--color-tech-accent)]/30 transition-colors relative">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-tech-accent)] uppercase tracking-wider">
+                                <Terminal className="w-3 h-3" /> Manim Code
+                              </div>
+                              <button
+                                onClick={() => handleCopySingleManim(step.manim_code)}
+                                className="text-gray-500 hover:text-white transition-colors"
+                                title="Copy snippet"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <pre className="overflow-x-auto text-xs font-mono text-gray-300 pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+                              <code>{step.manim_code}</code>
+                            </pre>
                           </div>
                         </div>
 
